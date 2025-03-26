@@ -34,34 +34,61 @@ include(CCache)
 include(FindOrCloneSomeRep)
 
 # dependencies
-FindOrCloneRep("box2d" "https://github.com/erincatto/box2d" "v3.0.0" OFF)
-FindOrCloneRep("entt" "https://github.com/skypjack/entt.git" "master" OFF)
+FindOrCloneRep("box2d" "https://github.com/erincatto/box2d" "v3.0.0" ON)
+FindOrCloneRep("entt" "https://github.com/skypjack/entt.git" "master" ON)
 
 # dependencies
-FindOrCloneRep("quickjs" "https://github.com/bellard/quickjs" "master" OFF)
+FindOrCloneRep("quickjs" "https://github.com/bellard/quickjs" "master" ON)
 
-set(TARGET_DIR "${CMAKE_CURRENT_LIST_DIR}/extern/extern-quickjs")
+set(QUICKJS_DIR "${CMAKE_CURRENT_LIST_DIR}/extern/extern-quickjs")
 
-execute_process(COMMAND ${CMAKE_MAKE_PROGRAM} -C ${CMAKE_BINARY_DIR}
-                WORKING_DIRECTORY ${TARGET_DIR}
-                RESULT_VARIABLE quickjs_make_result)
-if(NOT quickjs_make_result EQUAL 0)
-    message(FATAL_ERROR "Make with quickjs in extern/extern-quickjs failed")
+find_library(QUICKJS_LIB quickjs)
+
+if (QUICKJS_LIB)
+    message(STATUS "QuickJS found: ${QUICKJS_LIB}, ${QUICKJS_INCLUDE_DIR}")
+else()
+    message(STATUS "QuickJS not found. Building from source...")
+
+    # Run make before make install
+    execute_process(
+        COMMAND ${CMAKE_MAKE_PROGRAM} -C ${QUICKJS_DIR}
+        WORKING_DIRECTORY ${QUICKJS_DIR}
+        RESULT_VARIABLE quickjs_make_result
+        OUTPUT_VARIABLE quickjs_output
+        ERROR_VARIABLE quickjs_error
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_STRIP_TRAILING_WHITESPACE
+    )
+
+    if (NOT quickjs_make_result EQUAL 0)
+        message(FATAL_ERROR "QuickJS build failed: ${quickjs_error}")
+    endif()
+
+    # Run make install
+    execute_process(
+        COMMAND sudo ${CMAKE_MAKE_PROGRAM} install
+        WORKING_DIRECTORY ${QUICKJS_DIR}
+        RESULT_VARIABLE quickjs_install_result
+        OUTPUT_VARIABLE quickjs_install_output
+        ERROR_VARIABLE quickjs_install_error
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_STRIP_TRAILING_WHITESPACE
+    )
+
+    if (NOT quickjs_install_result EQUAL 0)
+        message(FATAL_ERROR "QuickJS installation failed: ${quickjs_install_error}")
+    else()
+        message(STATUS "QuickJS successfully built and installed.")
+    endif()
 endif()
 
-execute_process(COMMAND sudo ${CMAKE_MAKE_PROGRAM} install
-                WORKING_DIRECTORY ${TARGET_DIR}
-                RESULT_VARIABLE quickjs_install_result)
-if(NOT quickjs_install_result EQUAL 0)
-    message(FATAL_ERROR "Install with quickjs in extern/extern-quickjs failed")
-endif()
 
 # dependencies
-FindOrCloneRep("SDL2" "https://github.com/libsdl-org/SDL.git" "main" OFF)
+FindOrCloneRep("SDL2" "https://github.com/libsdl-org/SDL.git" "main" ON)
 include_directories(${SDL2_INCLUDE_DIRS})
 
 # dependencies
-FindOrCloneRep("box2cpp" "https://github.com/HolyBlackCat/box2cpp" "box2d-3.0.0" OFF)
+FindOrCloneRep("box2cpp" "https://github.com/HolyBlackCat/box2cpp" "box2d-3.0.0" ON)
 set(BOX2CPP_PATH  "extern/extern-box2cpp")
 add_library(box2cpp INTERFACE)
 target_include_directories(box2cpp INTERFACE ${BOX2CPP_PATH}/include)
@@ -80,7 +107,7 @@ target_include_directories(box2cpp INTERFACE ${BOX2CPP_PATH}/include)
 # target_link_libraries(imgui PUBLIC glfw)
 
 #dependencies
-FindOrCloneRep("asio" "https://github.com/chriskohlhoff/asio.git" "asio-1-31-0" OFF)
+FindOrCloneRep("asio" "https://github.com/chriskohlhoff/asio.git" "asio-1-31-0" ON)
 FetchContent_GetProperties(asio)
 if(NOT asio_POPULATED)
   message(STATUS "Fetching asio ${ASIO_CMAKE_ASIO_TAG}")
@@ -149,14 +176,12 @@ find_package(SDL2_image REQUIRED)
 find_package(entt REQUIRED)
 find_package(quickjs REQUIRED)
 find_package(box2cpp REQUIRED)
-# find_package(imgui REQUIRED)
 find_package(asio REQUIRED)
 
 #dependencies
 find_package(OpenGL REQUIRED)
-# find_package(spdlog REQUIRED)
-# find_package(docopt REQUIRED)
-# find_package(fmt REQUIRED)
+find_package(spdlog REQUIRED)
+find_package(fmt REQUIRED)
 
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -164,5 +189,5 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
 endif()
 
 add_subdirectory(chimpy)
-add_subdirectory(modules)
-add_subdirectory(examples)
+add_subdirectory(logic)
+add_subdirectory(deploy)
