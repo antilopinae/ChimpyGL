@@ -13,8 +13,9 @@ Game::Game()
 ,mRenderer(nullptr)
 ,mIsRunning(true)
 ,mUpdatingActors(false)
+,mClient()
+,mServer(80000)
 {
-
 }
 
 bool Game::Initialize()
@@ -48,6 +49,9 @@ bool Game::Initialize()
     Random::Init();
 
     LoadData();
+
+    mServer.Start();
+    mClient.Connect("127.0.0.1", 80000);
 
     mTicksCount = SDL_GetTicks();
 
@@ -97,6 +101,19 @@ void Game::ProcessInput()
     mUpdatingActors = false;
 }
 
+void Game::SendInputToServer(const Uint8* keyState) {
+  Network::PlayerInput input;
+  input.forward = keyState[SDL_SCANCODE_W];
+  input.back = keyState[SDL_SCANCODE_S];
+  input.left = keyState[SDL_SCANCODE_A];
+  input.right = keyState[SDL_SCANCODE_D];
+  input.fire = keyState[SDL_SCANCODE_SPACE];
+
+  auto msg = Network::CreateMsgClientInputUpdate(input);
+
+  mClient.Send(msg);
+}
+
 void Game::UpdateGame()
 {
     // Compute delta time
@@ -110,6 +127,25 @@ void Game::UpdateGame()
         deltaTime = 0.05f;
     }
     mTicksCount = SDL_GetTicks();
+
+    mIsConnected = mClient.IsConnected();
+
+    if (mIsConnected) {
+      ProcessNetworkMessages();
+    } else {
+      if (mPlayerID != 0) {
+        std::cout << "[CLIENT] Disconnected from server." << std::endl;
+        mPlayerID = 0;
+        if (mShip) mShip->SetState(Actor::EPaused);
+
+        // Handle disconnection logic
+        for (auto const& [id, ship] : mOtherShips) {
+          RemoveActor(ship);
+        }
+        mOtherShips.clear();
+        mPlayerID = 0; // Reset player ID
+      }
+    }
 
     // Update all actors
     mUpdatingActors = true;
@@ -141,6 +177,53 @@ void Game::UpdateGame()
     {
         delete actor;
     }
+}
+
+void Game::ProcessNetworkMessages()
+{
+  while (!mClient.IncomingMessages().empty())
+  {
+    auto ownedMsg = mClient.IncomingMessages().pop_front();
+    auto message = ownedMsg.message;
+
+    switch (message.header.id) {
+      case Network::GameMsgTypes::ServerAccept:
+      {
+        auto accept = Network::ParseMsgServerAccept(message);
+        mPlayerID = accept.clientID;
+        std::cout << "[CLIENT] Server accepted connection. My ID: " << mPlayerID << std::endl;
+        if (mShip) mShip->SetState(Actor::EActive);
+      }
+      break;
+
+      case Network::GameMsgTypes::ServerPing:
+      {
+        auto ping = Network::ParseMsgServerPing(message);
+        std::chrono::system_clock::time_point timeNow = std::chrono::system_clock::now();
+        std::chrono::system_clock::time_point timePrev {std::chrono::milliseconds(ping.timestamp)};
+        std::cout << "[CLIENT] Ping: " << std::chrono::duration<double>(timeNow - timePrev).count() << std::endl;
+      }
+      break;
+
+      case Network::GameMsgTypes::GamePlayerDisconnect:
+      {
+        uint32_t disconnectedID = 0;
+        auto disc = Network::ParseMsgGamePlayerDisconnect(message);
+        disconnectedID = disc.clientID;
+        std::cout << "[CLIENT] Server announced player " << disconnectedID << " disconnected." << std::endl;
+        auto it = mOtherShips.find(disconnectedID);
+        if (it != mOtherShips.end()) {
+          RemoveActor(it->second); // Marks for deletion
+          mOtherShips.erase(it);
+        }
+      }
+      break;
+
+      default:
+        std::cout << "[CLIENT] Unhandled message type: " << static_cast<uint32_t>(message.header.id) << std::endl;
+      break;
+    }
+  }
 }
 
 void Game::GenerateOutput()
@@ -293,6 +376,11 @@ void Game::RemoveAsteroid(Asteroid* ast)
 
 void Game::Shutdown()
 {
+  // Disconnect client before unloading data
+  if (mClient.IsConnected()) {
+    mClient.Disconnect();
+  }
+
     UnloadData();
     IMG_Quit();
     SDL_DestroyRenderer(mRenderer);

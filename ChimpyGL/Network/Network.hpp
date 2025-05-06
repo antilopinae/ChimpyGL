@@ -1,9 +1,9 @@
 #pragma once
 
-namespace EngineG {
+#include "NetCommon.hpp"
+#include "GameMsgTypes.hpp"
+#include "PlayerStates.hpp"
+#include "NetMessage.hpp"
 
-void StartSocketServer();
-void StartSocketClient();
-void StartSimpleUDPServer();
-
-}
+#include "GameClient.hpp"
+#include "GameServer.hpp"

@@ -6,6 +6,15 @@
 #include <algorithm>
 
 #include "SDL.hpp"
+#include "Network.hpp"
+
+#ifdef DEBUG
+#define ASSETS_DIR "../../"
+
+#else
+#define ASSETS_DIR ""
+
+#endif
 
 namespace EngineG{
 
@@ -36,6 +45,17 @@ private:
     void GenerateOutput();
     void LoadData();
     void UnloadData();
+
+    // --- Networking ---
+    void ProcessNetworkMessages();
+    void SendInputToServer(const Uint8* keyState);
+
+    Network::GameClient mClient;
+    Network::GameServer mServer; // non-active
+
+    uint32_t mPlayerID = 0;
+    std::unordered_map<uint32_t, class Ship*> mOtherShips;
+    bool mIsConnected = false;
 
     // Map of textures loaded
     std::unordered_map<std::string, SDL_Texture*> mTextures;
